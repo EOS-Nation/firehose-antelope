@@ -17,6 +17,7 @@ package codec
 import (
 	"bytes"
 	"fmt"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	"io"
 	"os"
@@ -24,7 +25,7 @@ import (
 )
 
 func BenchmarkConsoleReader(b *testing.B) {
-	expectedBlockCount := 33
+	expectedBlockCount := 381
 	data, err := os.ReadFile("testdata/deep-mind-3.1.x.dmlog")
 	if err != nil {
 		b.Fatal(err)
@@ -43,7 +44,7 @@ func BenchmarkConsoleReader(b *testing.B) {
 			channel <- string(line)
 		}
 
-		readers[n] = testReaderConsoleReader(b.Helper, channel, func() {}, zaptest.NewLogger(b))
+		readers[n] = testReaderConsoleReader(b.Helper, channel, func() {}, zaptest.NewLogger(b, zaptest.Level(zap.InfoLevel)))
 
 		// We close it right now, it will still be fully consumed
 		close(channel)

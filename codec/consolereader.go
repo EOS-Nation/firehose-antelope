@@ -66,7 +66,7 @@ func NewConsoleReader(logger *zap.Logger, lines chan string) (*ConsoleReader, er
 			globalStats:  globalStats,
 			currentBlock: &pbantelope.Block{},
 			currentTrace: &pbantelope.TransactionTrace{},
-			abiDecoder:   newABIDecoder(),
+			abiDecoder:   newABIDecoder(false),
 		},
 		done:  make(chan interface{}),
 		stats: globalStats,
@@ -287,9 +287,7 @@ func (c *ConsoleReader) next() (out interface{}, err error) {
 			continue
 		}
 
-		// if traceEnabled {
-		c.logger.Debug("extracing deep mind data from line", zap.String("line", line))
-		// }
+		c.logger.Debug("extracting deep mind data from line", zap.String("line", line))
 
 		// Order of conditions is based (approximately) on those that will appear more often
 		switch {
@@ -324,10 +322,6 @@ func (c *ConsoleReader) next() (out interface{}, err error) {
 		case strings.HasPrefix(line, "PERM_OP"):
 			ctx.stats.inc("PERM_OP")
 			err = ctx.readPermOp(line)
-
-		case strings.HasPrefix(line, "KV_OP"):
-			ctx.stats.inc("KV_OP")
-			err = ctx.readKVOp(line)
 
 		case strings.HasPrefix(line, "DTRX_OP CREATE"):
 			ctx.stats.inc("DTRX_OP CREATE")
@@ -631,10 +625,6 @@ func (ctx *parseCtx) recordDBOp(operation *pbantelope.DBOp) {
 	ctx.currentTrace.DbOps = append(ctx.currentTrace.DbOps, operation)
 }
 
-func (ctx *parseCtx) recordKVOp(operation *pbantelope.KVOp) {
-	ctx.currentTrace.KvOps = append(ctx.currentTrace.KvOps, operation)
-}
-
 func (ctx *parseCtx) recordDTrxOp(transaction *pbantelope.DTrxOp) {
 	ctx.currentTrace.DtrxOps = append(ctx.currentTrace.DtrxOps, transaction)
 
@@ -722,7 +712,6 @@ func (ctx *parseCtx) recordTransaction(trace *pbantelope.TransactionTrace) error
 	trace.CreationTree = antelope.CreationTreeToDEOS(toFlatTree(creationTreeRoots...))
 	trace.DtrxOps = ctx.currentTrace.DtrxOps
 	trace.DbOps = ctx.currentTrace.DbOps
-	trace.KvOps = ctx.currentTrace.KvOps
 	trace.FeatureOps = ctx.currentTrace.FeatureOps
 	trace.PermOps = ctx.currentTrace.PermOps
 	trace.RamOps = ctx.currentTrace.RamOps
@@ -986,98 +975,6 @@ func (ctx *parseCtx) readDBOp(line string) error {
 		Scope:       chunks[5],
 		TableName:   chunks[6],
 		PrimaryKey:  chunks[7],
-		OldData:     oldBytes,
-		NewData:     newBytes,
-	})
-
-	return nil
-}
-
-// Line formats:
-//
-//	KV_OP INS ${action_id} ${code} ${npayer} ${key} ${ndata}
-//	KV_OP UPD ${action_id} ${code} ${npayer} ${key} ${odata}:${ndata}
-//	KV_OP REM ${action_id} ${code} ${opayer} ${key} ${odata}
-//
-// **Note** Added in deep mind log version 13
-func (ctx *parseCtx) readKVOp(line string) error {
-	chunks := strings.SplitN(line, " ", 7)
-	if len(chunks) != 7 {
-		return fmt.Errorf("expected 7 fields, got %d", len(chunks))
-	}
-
-	actionIndex, err := strconv.Atoi(chunks[2])
-	if err != nil {
-		return fmt.Errorf("action_index is not a valid number, got: %q", chunks[2])
-	}
-
-	opString := chunks[1]
-
-	op := pbantelope.KVOp_OPERATION_UNKNOWN
-	var oldData, newData string
-	var oldPayer, newPayer string
-	switch opString {
-	case "INS":
-		op = pbantelope.KVOp_OPERATION_INSERT
-		newData = chunks[6]
-		newPayer = chunks[4]
-	case "UPD":
-		op = pbantelope.KVOp_OPERATION_UPDATE
-
-		payerChunks := strings.SplitN(chunks[4], ":", 2)
-		if len(payerChunks) != 2 {
-			if ctx.majorVersion == 13 {
-				return fmt.Errorf("upgrade to EOSIO >= 2.1.1 as the 2.1.0 version did not had old payer value in it")
-			}
-
-			return fmt.Errorf("should have old and new payer in field 4, found only one")
-		}
-
-		oldPayer = payerChunks[0]
-		newPayer = payerChunks[1]
-
-		dataChunks := strings.SplitN(chunks[6], ":", 2)
-		if len(dataChunks) != 2 {
-			return fmt.Errorf("should have old and new data in field 6, found only one")
-		}
-
-		oldData = dataChunks[0]
-		newData = dataChunks[1]
-	case "REM":
-		op = pbantelope.KVOp_OPERATION_REMOVE
-		oldData = chunks[6]
-		oldPayer = chunks[4]
-	default:
-		return fmt.Errorf("unknown operation: %q", opString)
-	}
-
-	key, err := hex.DecodeString(chunks[5])
-	if err != nil {
-		return fmt.Errorf("couldn't decode key: %w", err)
-	}
-
-	var oldBytes, newBytes []byte
-	if len(oldData) != 0 {
-		oldBytes, err = hex.DecodeString(oldData)
-		if err != nil {
-			return fmt.Errorf("couldn't decode old_data: %w", err)
-		}
-	}
-
-	if len(newData) != 0 {
-		newBytes, err = hex.DecodeString(newData)
-		if err != nil {
-			return fmt.Errorf("couldn't decode new_data: %w", err)
-		}
-	}
-
-	ctx.recordKVOp(&pbantelope.KVOp{
-		Operation:   op,
-		ActionIndex: uint32(actionIndex),
-		OldPayer:    oldPayer,
-		NewPayer:    newPayer,
-		Code:        chunks[3],
-		Key:         key,
 		OldData:     oldBytes,
 		NewData:     newBytes,
 	})

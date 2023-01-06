@@ -2,6 +2,8 @@
 .DS_Store
 test.out
 
+*profile.out
+
 # To facilitate development, you can use [direnv](https://direnv.net/) to auto-load
 # some environment variables. We have in `devel` a shim script called directly `fireacme`
 # (that should have been renamed to your specific chain like `fireeth`). This small shim

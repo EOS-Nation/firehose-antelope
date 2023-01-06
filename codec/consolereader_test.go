@@ -16,7 +16,6 @@ package codec
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	antelope_v3_1 "github.com/EOS-Nation/firehose-antelope/codec/antelope/v3.1"
@@ -237,7 +236,7 @@ func testReaderConsoleReader(helperFunc func(), lines chan string, closer func()
 			globalStats:  newConsoleReaderStats(),
 			currentBlock: &pbantelope.Block{},
 			currentTrace: &pbantelope.TransactionTrace{},
-			abiDecoder:   newABIDecoder(),
+			abiDecoder:   newABIDecoder(true),
 		},
 		logger: zlogTest,
 	}
@@ -395,178 +394,6 @@ func Test_TraceRlimitOp(t *testing.T) {
 
 				expected := protoJSONMarshalIndent(t, test.expected)
 				actual := protoJSONMarshalIndent(t, ctx.currentTrace.RlimitOps[0])
-
-				assert.JSONEq(t, expected, actual, diff.LineDiff(expected, actual))
-			}
-		})
-	}
-}
-
-func Test_readRAMOp(t *testing.T) {
-	tests := []struct {
-		name            string
-		line            string
-		parseCtxFactory func() *parseCtx
-		expected        *pbantelope.RAMOp
-		expectedErr     error
-	}{
-		{
-			"kv create standard",
-			`RAM_OP 0 0186e46a800000000091aa074d2ae8000080000001 kv create . ultra.test 645533 148`,
-			newParseCtx,
-			&pbantelope.RAMOp{
-				Operation:   pbantelope.RAMOp_OPERATION_DEPRECATED,
-				ActionIndex: 0,
-				Payer:       "ultra.test",
-				Delta:       148,
-				Usage:       645533,
-				Namespace:   pbantelope.RAMOp_NAMESPACE_KV,
-				UniqueKey:   "0186e46a800000000091aa074d2ae8000080000001",
-				Action:      pbantelope.RAMOp_ACTION_ADD,
-			},
-			nil,
-		},
-		{
-			"kv update standard",
-			`RAM_OP 0 0186e46a800000000091aa074d2ae8000080000001 kv update . ultra.test 645533 148`,
-			newParseCtx,
-			&pbantelope.RAMOp{
-				Operation:   pbantelope.RAMOp_OPERATION_DEPRECATED,
-				ActionIndex: 0,
-				Payer:       "ultra.test",
-				Delta:       148,
-				Usage:       645533,
-				Namespace:   pbantelope.RAMOp_NAMESPACE_KV,
-				UniqueKey:   "0186e46a800000000091aa074d2ae8000080000001",
-				Action:      pbantelope.RAMOp_ACTION_UPDATE,
-			},
-			nil,
-		},
-		{
-			"kv erase standard",
-			`RAM_OP 0 0186e46a800000000091aa074d2ae8000080000001 kv erase . ultra.test 645533 148`,
-			newParseCtx,
-			&pbantelope.RAMOp{
-				Operation:   pbantelope.RAMOp_OPERATION_DEPRECATED,
-				ActionIndex: 0,
-				Payer:       "ultra.test",
-				Delta:       148,
-				Usage:       645533,
-				Namespace:   pbantelope.RAMOp_NAMESPACE_KV,
-				UniqueKey:   "0186e46a800000000091aa074d2ae8000080000001",
-				Action:      pbantelope.RAMOp_ACTION_REMOVE,
-			},
-			nil,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			ctx := test.parseCtxFactory()
-			err := ctx.readRAMOp(test.line)
-
-			require.Equal(t, test.expectedErr, err)
-
-			if test.expectedErr == nil {
-				require.Len(t, ctx.currentTrace.RamOps, 1)
-
-				expected := protoJSONMarshalIndent(t, test.expected)
-				actual := protoJSONMarshalIndent(t, ctx.currentTrace.RamOps[0])
-
-				assert.JSONEq(t, expected, actual, diff.LineDiff(expected, actual))
-			}
-		})
-	}
-}
-
-func Test_readKvOp(t *testing.T) {
-	toBytes := func(in string) []byte {
-		out, err := hex.DecodeString(in)
-		require.NoError(t, err)
-
-		return out
-	}
-
-	tests := []struct {
-		name            string
-		line            string
-		parseCtxFactory func() *parseCtx
-		expected        *pbantelope.KVOp
-		expectedErr     error
-	}{
-		{
-			"insert standard",
-			`KV_OP INS 0 battlefield john b6876876616c7565 78c159f95d672d640539`,
-			newParseCtx,
-			&pbantelope.KVOp{
-				Operation:   pbantelope.KVOp_OPERATION_INSERT,
-				ActionIndex: 0,
-				Code:        "battlefield",
-				OldPayer:    "",
-				NewPayer:    "john",
-				Key:         toBytes("b6876876616c7565"),
-				OldData:     nil,
-				NewData:     toBytes("78c159f95d672d640539"),
-			},
-			nil,
-		},
-		{
-			"update standard",
-			`KV_OP UPD 1 battlefield john:jane b6876876616c7565 78c159f95d672d640539:78c159f95d672d640561`,
-			newParseCtx,
-			&pbantelope.KVOp{
-				Operation:   pbantelope.KVOp_OPERATION_UPDATE,
-				ActionIndex: 1,
-				Code:        "battlefield",
-				OldPayer:    "john",
-				NewPayer:    "jane",
-				Key:         toBytes("b6876876616c7565"),
-				OldData:     toBytes("78c159f95d672d640539"),
-				NewData:     toBytes("78c159f95d672d640561"),
-			},
-			nil,
-		},
-		{
-			"update no old_payer on deep_mind version 13",
-			`KV_OP UPD 1 battlefield jane b6876876616c7565 78c159f95d672d640539:78c159f95d672d640561`,
-			func() *parseCtx {
-				ctx := newParseCtx()
-				ctx.majorVersion = 13
-				return ctx
-			},
-			nil,
-			errors.New("upgrade to EOSIO >= 2.1.1 as the 2.1.0 version did not had old payer value in it"),
-		},
-		{
-			"remove standard",
-			`KV_OP REM 2 battlefield jane b6876876616c7565 78c159f95d672d640561`,
-			newParseCtx,
-			&pbantelope.KVOp{
-				Operation:   pbantelope.KVOp_OPERATION_REMOVE,
-				ActionIndex: 2,
-				Code:        "battlefield",
-				OldPayer:    "jane",
-				NewPayer:    "",
-				Key:         toBytes("b6876876616c7565"),
-				OldData:     toBytes("78c159f95d672d640561"),
-				NewData:     nil,
-			},
-			nil,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			ctx := test.parseCtxFactory()
-			err := ctx.readKVOp(test.line)
-
-			require.Equal(t, test.expectedErr, err)
-
-			if test.expectedErr == nil {
-				require.Len(t, ctx.currentTrace.KvOps, 1)
-
-				expected := protoJSONMarshalIndent(t, test.expected)
-				actual := protoJSONMarshalIndent(t, ctx.currentTrace.KvOps[0])
 
 				assert.JSONEq(t, expected, actual, diff.LineDiff(expected, actual))
 			}
@@ -897,7 +724,7 @@ func blockWithConsole(block *pbantelope.Block) bool {
 func newParseCtx() *parseCtx {
 	return &parseCtx{
 		hydrator:     antelope_v3_1.NewHydrator(zlogTest),
-		abiDecoder:   newABIDecoder(),
+		abiDecoder:   newABIDecoder(false),
 		currentBlock: &pbantelope.Block{},
 		currentTrace: &pbantelope.TransactionTrace{},
 	}

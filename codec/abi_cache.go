@@ -66,7 +66,7 @@ func newABICache() *ABICache {
 
 // addABI adds the ABI to cache assuming it follows the latest stored ABI for this
 // contract. For example, assuming a series of ABI for which the latest ABI
-// change was peformed at global sequence #450, then it's assumed that the receive `globalSequence`
+// change was performed at global sequence #450, then it's assumed that the received `globalSequence`
 // argument is greater than 450.
 //
 // If the invariant is not respected, an error is returned.

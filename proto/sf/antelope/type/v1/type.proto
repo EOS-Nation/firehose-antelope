@@ -645,6 +645,8 @@ message DBOp {
   string new_payer = 8;
   bytes old_data = 9;
   bytes new_data = 10;
+  string old_data_json = 11;
+  string new_data_json = 12;
 
   enum Operation {
     OPERATION_UNKNOWN = 0;

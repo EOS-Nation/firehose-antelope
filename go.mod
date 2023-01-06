@@ -42,6 +42,8 @@ replace (
 	github.com/bytecodealliance/wasmtime-go => github.com/streamingfast/wasmtime-go v0.0.0-20221110162800-03b0c10e9b6a
 )
 
+replace github.com/EOS-Nation/firehose-antelope/types => ./types
+
 require (
 	cloud.google.com/go v0.104.0 // indirect
 	cloud.google.com/go/compute v1.10.0 // indirect

@@ -416,7 +416,7 @@ func TestABIDecoder(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			decoder := newABIDecoder()
+			decoder := newABIDecoder(false)
 
 			for contract, abi := range test.abiDumps {
 				abiBinary, err := eos.MarshalBinary(abi)
